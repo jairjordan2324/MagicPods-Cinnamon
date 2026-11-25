@@ -1,0 +1,17 @@
+{
+    "low-alerts": {
+        "type": "switch",
+        "default": true,
+        "description": "Show low-battery notifications"
+    },
+    "low-threshold": {
+        "type": "spinbutton",
+        "default": 20,
+        "min": 5,
+        "max": 40,
+        "step": 1,
+        "units": "%",
+        "description": "Low-battery threshold",
+        "dependency": "low-alerts"
+    }
+}

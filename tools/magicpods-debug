@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""Capture MagicPods diagnostics into a private, bounded local log ring."""
+
+import argparse
+import fcntl
+import os
+from pathlib import Path
+import selectors
+import signal
+import subprocess
+import sys
+import time
+
+
+MIB = 1024 * 1024
+ARCHIVES = 3
+CHUNK = 64 * 1024
+# sudo may change UID, so the unprivileged logger cannot rely on signaling it.
+# A privileged watcher stops the bounded command on EOF of the logger's pipe.
+PRIVILEGED_WATCHER = r"""
+exec 3<&0
+"$@" </dev/null 3<&- &
+collector=$!
+(
+    IFS= read -r unused <&3
+    kill -TERM "$collector" 2>/dev/null || :
+) &
+watcher=$!
+wait "$collector"
+status=$?
+kill -TERM "$watcher" 2>/dev/null || :
+wait "$watcher" 2>/dev/null || :
+exit "$status"
+"""
+
+
+class RollingLog:
+    def __init__(self, path, limit):
+        self.path = path
+        self.limit = limit
+        self.fd = None
+        self.open()
+
+    def archive(self, index):
+        return self.path.with_name(f"{self.path.name}.{index}")
+
+    def open(self):
+        self.fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+        os.fchmod(self.fd, 0o600)
+        self.size = os.fstat(self.fd).st_size
+
+    def close(self):
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+
+    def rotate(self):
+        self.close()
+        for index in range(ARCHIVES, 1, -1):
+            try:
+                self.archive(index - 1).replace(self.archive(index))
+            except FileNotFoundError:
+                pass
+        self.path.replace(self.archive(1))
+        self.open()
+
+    def write(self, data):
+        remaining = memoryview(data)
+        while remaining:
+            if self.size >= self.limit:
+                self.rotate()
+            written = os.write(self.fd, remaining[:self.limit - self.size])
+            self.size += written
+            remaining = remaining[written:]
+
+
+def private_dir(path):
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = path.stat()
+    if path.is_symlink() or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise RuntimeError(f"Expected a private directory owned by the current user: {path}")
+
+
+def collectors(backend_log, duration):
+    journal = ["/usr/bin/journalctl", "--output=short-iso-precise", "--no-pager", "-f", "-n", "0"]
+    # A root-owned collector also has a deadline if the Python supervisor dies.
+    privileged = ["/usr/bin/sudo", "-n", "/bin/sh", "-c", PRIVILEGED_WATCHER,
+                  "magicpods-debug", "/usr/bin/timeout", "--foreground",
+                  "--kill-after=3s", f"{duration + 10}s"]
+    return {
+        "bluetooth.log": (privileged + journal + ["-u", "bluetooth"], MIB, True),
+        "session.log": (journal + ["--user"], MIB, False),
+        "backend.log": (["/usr/bin/tail", f"--pid={os.getpid()}", "-n", "0", "-F", "--",
+                         str(backend_log)], MIB, False),
+        "hci.log": (privileged + ["/usr/bin/stdbuf", "-oL", "-eL", "/usr/bin/btmon",
+                                  "-C", "250", "-T", "-i", "hci0"], 8 * MIB, True),
+        "kernel.log": (privileged + journal + ["-k"], MIB, True),
+    }
+
+
+def stop_children(children):
+    for process, _, privileged in children:
+        if privileged:
+            process.stdin.close()
+        elif process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+    deadline = time.monotonic() + 4
+    pending = []
+    for process, _, privileged in children:
+        try:
+            process.wait(timeout=max(0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            pending.append((process, privileged))
+    for process, privileged in pending:
+        if privileged:
+            print(f"Collector supervisor {process.pid} did not exit promptly; "
+                  "its privileged timeout is still in effect.", file=sys.stderr)
+            continue
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+    return not any(privileged for _, privileged in pending)
+
+
+def collect(directory, sources, duration):
+    stopping = None
+    handlers = {}
+
+    def request_stop(signum, _frame):
+        nonlocal stopping
+        stopping = stopping or signum
+
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        handlers[sig] = signal.signal(sig, request_stop)
+    children = []
+    cleanup_ok = True
+    result = 0
+    try:
+        with selectors.DefaultSelector() as selector:
+            for name, (command, limit, privileged) in sources.items():
+                if stopping:
+                    break
+                log = RollingLog(directory / name, limit)
+                try:
+                    process = subprocess.Popen(command,
+                                               stdin=subprocess.PIPE if privileged else subprocess.DEVNULL,
+                                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                               process_group=0)
+                except BaseException:
+                    log.close()
+                    raise
+                children.append((process, log, privileged))
+                selector.register(process.stdout, selectors.EVENT_READ, (name, process, log))
+
+            deadline = time.monotonic() + duration
+            while not stopping and time.monotonic() < deadline:
+                for key, _ in selector.select(min(0.25, max(0, deadline - time.monotonic()))):
+                    name, process, log = key.data
+                    block = os.read(key.fd, CHUNK)
+                    if not block:
+                        code = process.poll()
+                        print(f"{name} collector closed (exit {code}); stopping capture.", file=sys.stderr)
+                        result = 1
+                        break
+                    log.write(block)
+                if result:
+                    break
+    finally:
+        cleanup_ok = stop_children(children)
+        try:
+            # Drain bytes already written into pipes by exited children.
+            for process, log, _ in children:
+                if process.poll() is not None:
+                    os.set_blocking(process.stdout.fileno(), False)
+                    while block := process.stdout.read(CHUNK):
+                        log.write(block)
+        finally:
+            for process, log, _ in children:
+                process.stdout.close()
+                log.close()
+            for sig, handler in handlers.items():
+                signal.signal(sig, handler)
+    return result or (128 + stopping if stopping else int(not cleanup_ok))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--duration", type=int, default=7200, metavar="SECONDS",
+                        help="capture duration, 1–86400 seconds (default: 7200)")
+    parser.add_argument("--backend-log", type=Path,
+                        default=Path.home() / "Projects/MagicPodsCore-Lab-build/experimental-runtime.log")
+    args = parser.parse_args()
+    if not 1 <= args.duration <= 86400:
+        parser.error("--duration must be between 1 and 86400 seconds")
+    if os.getuid() == 0:
+        parser.error("run as your regular desktop user")
+    os.umask(0o077)
+    root = Path.home() / ".local/state/magicpods-debug"
+    directory = root / "rolling"
+    private_dir(root)
+    private_dir(directory)
+    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW
+    # The same lock covers every capture in the rolling directory.
+    with os.fdopen(os.open(root / ".rolling.lock", flags, 0o600), "r+") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("A rolling capture is already running.", file=sys.stderr)
+            return 1
+        subprocess.run(["/usr/bin/sudo", "-v"], check=True)
+        print(f"Logging to {directory} (48 MiB rolling limit; Ctrl+C to stop).", flush=True)
+        return collect(directory, collectors(args.backend_log.expanduser(), args.duration), args.duration)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        print(f"magicpods-debug: {error}", file=sys.stderr)
+        sys.exit(1)

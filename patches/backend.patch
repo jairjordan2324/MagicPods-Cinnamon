@@ -1,0 +1,13 @@
+diff --git a/src/main.cpp b/src/main.cpp
+index 14557e4..6d7bd19 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -485,7 +485,7 @@ int main(int argc, char** argv) {
+             /* You may access ws->getUserData() here */
+             Logger::Info("On open websocket closed");
+         }
+-    }).listen(WEBSOCKET_PORT, LIBUS_LISTEN_EXCLUSIVE_PORT, [&](auto *listen_socket) {
++    }).listen("127.0.0.1", WEBSOCKET_PORT, LIBUS_LISTEN_EXCLUSIVE_PORT, [&](auto *listen_socket) {
+         if (listen_socket) {
+             Logger::Info("Listening on port %d", WEBSOCKET_PORT);
+ 

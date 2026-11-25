@@ -1,0 +1,99 @@
+.magicpods-header {
+    spacing: 12px;
+    padding: 4px 0;
+}
+
+.magicpods-device {
+    font-size: 1.24em;
+    font-weight: bold;
+    max-width: 215px;
+}
+
+.magicpods-connection,
+.magicpods-detail-row {
+    spacing: 8px;
+}
+
+.magicpods-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background-color: #59ba73;
+}
+
+.magicpods-connected {
+    color: #59ba73;
+}
+
+.magicpods-configure {
+    border-radius: 6px;
+    padding: 5px;
+}
+
+.magicpods-configure:hover,
+.magicpods-configure:focus,
+.magicpods-mode-selected {
+    background-color: rgba(128, 128, 128, 0.19);
+}
+
+.magicpods-section {
+    font-size: 1.08em;
+    font-weight: bold;
+}
+
+.magicpods-mode {
+    border-radius: 7px;
+}
+
+.magicpods-batteries {
+    spacing: 12px;
+    padding: 4px 0;
+}
+
+.magicpods-battery {
+    spacing: 5px;
+    width: 96px;
+    text-align: center;
+}
+
+.magicpods-battery-label,
+.magicpods-battery-detail,
+.magicpods-percentage {
+    text-align: center;
+}
+
+.magicpods-percentage {
+    font-weight: bold;
+    font-size: 1.28em;
+}
+
+.magicpods-battery-detail {
+    font-size: 0.86em;
+    min-height: 15px;
+}
+
+.magicpods-secondary {
+    font-size: 0.94em;
+}
+
+.magicpods-track,
+.magicpods-fill {
+    height: 5px;
+    border-radius: 3px;
+}
+
+.magicpods-track {
+    background-color: rgba(128, 128, 128, 0.42);
+}
+
+.magicpods-fill {
+    background-color: #59ba73;
+}
+
+.magicpods-fill.magicpods-cached {
+    background-color: rgba(128, 128, 128, 0.75);
+}
+
+.magicpods-fill.magicpods-low {
+    background-color: #d66a4f;
+}

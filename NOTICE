@@ -1,0 +1,31 @@
+MagicPods Cinnamon is an unofficial, AI-assisted Cinnamon frontend.
+It is not an official MagicPods or Apple product.
+
+The Bluetooth backend is MagicPodsCore, developed by Aleksandr Maslov
+and Andrei Litvintsev. The frontend integration references the upstream
+MagicPodsLinux project by Aleksandr Maslov. Original notices are
+retained in their source files.
+
+MagicPodsCore source: https://github.com/steam3d/MagicPodsCore
+Pinned revision: 04af4bdeb5cbdc7cb6eeba9b0acf2076cc6d3c16
+MagicPodsLinux reference: https://github.com/steam3d/MagicPodsLinux
+
+MagicPods Cinnamon release modification, 2026-11-24: Core
+`src/main.cpp` binds the WebSocket to IPv4 loopback. Core uses the
+pinned upstream notification timing. See LICENSE for GPL-3.0 terms.
+
+The matching magicpods-cinnamon-source.tar.gz contains the patched Core,
+complete bundled dependency sources, notices, and build/install scripts.
+Distribute it with the runtime archive from the same download location.
+
+Third-party code in the Core executable or its headers:
+  sdbus-c++ v1.6.0 — LGPL-2.1 with its upstream linking exception.
+  uSockets v0.8.7 — Apache-2.0.
+  uWebSockets v20.58.0 — Apache-2.0.
+  nlohmann/json v3.11.3 — MIT.
+  toml++ v3.4.0 — MIT.
+
+The upstream license texts are in licenses/ in the runtime archive and
+in the vendor trees in Corresponding Source. The runtime archive does
+not include third-party shared system libraries. These are supplied by
+the destination distribution.

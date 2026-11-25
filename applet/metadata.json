@@ -1,0 +1,7 @@
+{
+    "uuid": "magicpods-cinnamon@local",
+    "name": "MagicPods",
+    "description": "Bluetooth headphone battery and connection controls",
+    "icon": "audio-headphones-symbolic",
+    "max-instances": 1
+}

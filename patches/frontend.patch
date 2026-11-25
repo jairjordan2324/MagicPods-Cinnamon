@@ -1,0 +1,31 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 88ab7a7..2e2a77a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -150,12 +150,16 @@ target_compile_definitions(magicpods PRIVATE
+     MAGICPODS_APP_SOURCE_DIR="${APP_SOURCE_DIR}"
+ )
+ 
++file(GLOB MAGICPODS_TS_FILES
++    "${CMAKE_CURRENT_SOURCE_DIR}/src/app/i18n/locale_*.ts"
++)
++
+ qt_add_translations(magicpods
++    TS_FILES ${MAGICPODS_TS_FILES}
+     SOURCE_TARGETS magicpods
+-    TS_FILE_BASE "${APP_I18N_TS_FILE_BASE}"
+-    MERGE_QT_TRANSLATIONS
+-    QT_TRANSLATION_CATALOGS qtbase
+-    RESOURCE_PREFIX i18n
++    LRELEASE_OPTIONS -idbased
++    NO_GENERATE_PLURALS_TS_FILE
++    RESOURCE_PREFIX "/i18n"
+ )
+ 
+ install(TARGETS magicpods
+diff --git a/src/modules/MagicPodsCore b/src/modules/MagicPodsCore
+--- a/src/modules/MagicPodsCore
++++ b/src/modules/MagicPodsCore
+@@ -1 +1 @@
+-Subproject commit 04af4bdeb5cbdc7cb6eeba9b0acf2076cc6d3c16
++Subproject commit 04af4bdeb5cbdc7cb6eeba9b0acf2076cc6d3c16-dirty

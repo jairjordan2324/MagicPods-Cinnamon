@@ -1,0 +1,45 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
+set -eu
+
+listener() {
+    ss -H -ltnp 'sport = :2020'
+}
+
+case "${1:-}" in
+    preflight)
+        directory="${2:-$HOME/.local/share/magicpods-cinnamon/backend}"
+        digest=$(awk '$2 == "magicpodscore" { print $1 }' "$directory/magicpodscore.sha256")
+        if ! printf '%s  %s\n' "$digest" "$directory/magicpodscore" | sha256sum --check --status; then
+            echo 'The packaged MagicPodsCore checksum does not match.' >&2
+            exit 1
+        fi
+        installed=$(listener)
+        if [ -n "$installed" ] || pgrep -u "$(id -u)" -x 'magicpods|magicpodscore' >/dev/null; then
+            echo 'Stop the other MagicPods frontend/backend and free TCP port 2020.' >&2
+            exit 1
+        fi
+        ;;
+    listener)
+        pid="${2:?Missing service PID}"
+        for _ in 1 2 3 4 5; do
+            installed=$(listener)
+            if [ -n "$installed" ]; then
+                printf '%s\n' "$installed" | awk -v owner="pid=$pid," '
+                    $4 == "127.0.0.1:2020" && index($0, owner) { verified++ }
+                    END { exit !(NR == 1 && verified == 1) }
+                ' || {
+                    echo 'The service does not own the only IPv4 loopback listener on port 2020.' >&2
+                    exit 1
+                }
+                exit 0
+            fi
+            sleep 1
+        done
+        echo 'MagicPodsCore did not open its loopback listener.' >&2
+        exit 1
+        ;;
+    *)
+        exit 2
+        ;;
+esac

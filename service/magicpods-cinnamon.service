@@ -1,0 +1,20 @@
+[Unit]
+Description=MagicPodsCore for the Cinnamon applet
+StartLimitIntervalSec=5min
+StartLimitBurst=5
+
+[Service]
+Type=exec
+UMask=0077
+Environment="XDG_CONFIG_HOME=%h/.local/state/magicpods-cinnamon"
+ExecStartPre=%h/.local/share/magicpods-cinnamon/check-backend preflight
+ExecStart=%h/.local/share/magicpods-cinnamon/backend/magicpodscore
+ExecStartPost=%h/.local/share/magicpods-cinnamon/check-backend listener ${MAINPID}
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=15s
+TimeoutStopSec=5s
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
